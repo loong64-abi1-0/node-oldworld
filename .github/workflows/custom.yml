@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         name: ['node']
-        binaries: ['glibc', 'musl']
+        binaries: ['gnu', 'musl']
 
     steps:
       - name: Check version
@@ -40,7 +40,7 @@ jobs:
       - name: Check release
         run: |
           case ${{ matrix.binaries }} in
-            glibc)
+            gnu)
               gh release view ${{ env.version }} -R ${{ github.repository }} | grep node-${{ env.version }}-linux-loong64.tar.xz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_ENV
               ;;
             musl)
@@ -95,18 +95,18 @@ jobs:
         if: env.create == '1'
         run: |
           if [ "${{ env.major_version }}" = "24" ]; then
-            sed -i 's@stable@mainline@g' recipes/loong64/Dockerfile
+            sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
           fi
+
+          ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
+          cd ${{ github.workspace }}/workdir/staging/release/${{ env.version }}
+
           case ${{ matrix.binaries }} in
-            glibc)
-              ./bin/local_build.sh -r loong64 -v ${{ env.version }} -w ${{ github.workspace }}/workdir
-              cd ${{ github.workspace }}/workdir/staging/release/${{ env.version }}
+            gnu)
               sha256sum node-${{ env.version }}-linux-loong64.tar.gz > node-${{ env.version }}-linux-loong64.tar.gz.sha256
               sha256sum node-${{ env.version }}-linux-loong64.tar.xz > node-${{ env.version }}-linux-loong64.tar.xz.sha256
               ;;
             musl)
-              ./bin/local_build.sh -r musl -v ${{ env.version }} -w ${{ github.workspace }}/workdir
-              cd ${{ github.workspace }}/workdir/staging/release/${{ env.version }}
               sha256sum node-${{ env.version }}-linux-loong64-musl.tar.gz > node-${{ env.version }}-linux-loong64-musl.tar.gz.sha256
               sha256sum node-${{ env.version }}-linux-loong64-musl.tar.xz > node-${{ env.version }}-linux-loong64-musl.tar.xz.sha256
               ;;
