@@ -6,7 +6,7 @@ on:
       version:
         description: 'Node.js version'
         required: true
-        default: 'v24.3.0'
+        default: 'v25.0.0'
       use_cache:
         description: 'Cache'
         type: boolean
@@ -50,7 +50,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.create == '1'
         with:
           path: main
@@ -64,7 +64,7 @@ jobs:
           git push origin ${{ env.version }} --force
         working-directory: main
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.create == '1'
         with:
           repository: loong64/node-unofficial-builds
@@ -94,7 +94,7 @@ jobs:
       - name: Build node.js
         if: env.create == '1'
         run: |
-          if [ "${{ env.major_version }}" = "24" ]; then
+          if [ "${{ env.major_version }}" -ge "24" ]; then
             sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
           fi
 

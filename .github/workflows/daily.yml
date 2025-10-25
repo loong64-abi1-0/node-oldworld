@@ -13,8 +13,8 @@ jobs:
       matrix:
         name: ['node']
         binaries: ['gnu', 'musl']
-        version: ['20', '22', '24']
-        latest_version: ['24']
+        version: ['20', '22', '24', '25']
+        latest_version: ['25']
 
     steps:
       - name: Check version
@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.create == '1'
         with:
           path: main
@@ -57,7 +57,7 @@ jobs:
           git push origin ${{ env.version }} || true
         working-directory: main
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.create == '1'
         with:
           repository: loong64/node-unofficial-builds
@@ -84,7 +84,7 @@ jobs:
       - name: Build node.js
         if: env.create == '1'
         run: |
-          if [ "${{ env.major_version }}" = "24" ]; then
+          if [ "${{ env.major_version }}" -ge "24" ]; then
             sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
           fi
 
