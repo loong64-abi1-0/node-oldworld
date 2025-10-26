@@ -15,6 +15,7 @@ on:
 
 jobs:
   build-custom:
+    name: Build Node.js ${{ github.event.inputs.version }} ${{ matrix.binaries }}
     runs-on: ubuntu-latest
     env:
       version: ${{ github.event.inputs.version }}
