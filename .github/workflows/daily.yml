@@ -15,9 +15,13 @@ jobs:
         binaries: ['gnu', 'musl']
         version: ['20', '22', '24', '25']
         latest_version: ['25']
+    outputs:
+      create: ${{ steps.check_release.outputs.create }}
+      version: ${{ steps.check_version.outputs.version }}
 
     steps:
       - name: Check version
+        id: check_version
         run: |
           version=$(curl -s https://nodejs.org/download/release/index.json | jq -r '.[] | .version' | grep -E '^v'"${{ matrix.version }}" | head -n 1)
           if [ -z "${version}" ]; then
@@ -25,21 +29,18 @@ jobs:
             exit 1
           fi
           echo "version=${version}" >> $GITHUB_ENV
+          echo "version=${version}" >> $GITHUB_OUTPUT
           echo "Node.js current version: ${version}"
 
           major_version=$(echo ${{ matrix.version }} | sed 's/^v//')
           echo "major_version=${major_version}" >> $GITHUB_ENV
 
       - name: Check release
+        id: check_release
         run: |
-          case ${{ matrix.binaries }} in
-            gnu)
-              gh release view ${{ env.version }} -R ${{ github.repository }} | grep node-${{ env.version }}-linux-loong64.tar.xz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_ENV
-              ;;
-            musl)
-              gh release view ${{ env.version }} -R ${{ github.repository }} | grep node-${{ env.version }}-linux-loong64-musl.tar.xz >/dev/null 2>&1 || echo "create=1" >> $GITHUB_ENV
-              ;;
-          esac
+          gh release view ${{ env.version }} -R ${{ github.repository }} | grep SHASUMS256.txt.asc >/dev/null 2>&1 || create=1
+          echo "create=${create:-0}" >> $GITHUB_ENV
+          echo "create=${create:-0}" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -89,18 +90,11 @@ jobs:
           fi
 
           ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
-          cd ${{ github.workspace }}/workdir/staging/release/${{ env.version }}
-
-          case ${{ matrix.binaries }} in
-            gnu)
-              sha256sum node-${{ env.version }}-linux-loong64.tar.gz > node-${{ env.version }}-linux-loong64.tar.gz.sha256
-              sha256sum node-${{ env.version }}-linux-loong64.tar.xz > node-${{ env.version }}-linux-loong64.tar.xz.sha256
-              ;;
-            musl)
-              sha256sum node-${{ env.version }}-linux-loong64-musl.tar.gz > node-${{ env.version }}-linux-loong64-musl.tar.gz.sha256
-              sha256sum node-${{ env.version }}-linux-loong64-musl.tar.xz > node-${{ env.version }}-linux-loong64-musl.tar.xz.sha256
-              ;;
-          esac
+          mkdir -p ${{ github.workspace }}/dist
+          cp -f ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/dist/
+          if [ ${{ matrix.binaries }} = "gnu" ]; then
+            cp -f ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* ${{ github.workspace }}/dist/
+          fi
         working-directory: unofficial-builds
 
       - name: Save Cache
@@ -111,6 +105,13 @@ jobs:
           path: ${{ github.workspace }}/workdir/.ccache
           key: ${{ matrix.name }}-${{ matrix.binaries }}-v${{ env.major_version }}-${{ github.run_id }}
 
+      - name: Upload Artifacts
+        if: env.create == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-${{ env.version }}-linux-loong64-${{ matrix.binaries }}
+          path: ${{ github.workspace }}/dist/*
+
       - name: Create release
         if: env.create == '1'
         run: |
@@ -120,7 +121,62 @@ jobs:
             latestFlag="--latest=false"
           fi
           gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag} || true
-          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* || true
-          gh release upload ${{ env.version }} -R ${{ github.repository }} ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    if: needs.build-daily.outputs.create == '1'
+    needs: build-daily
+    runs-on: ubuntu-latest
+    env:
+      version: ${{ needs.build-daily.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+
+      - name: Prepare scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y reprepro gnupg-agent
+          mkdir -p dist
+
+          echo > ~/.gnupg/gpg-agent.conf <<EOF
+          max-cache-ttl 60480000
+          default-cache-ttl 60480000
+          allow-preset-passphrase
+          EOF
+          gpg-connect-agent reloadagent /bye
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: node-*
+          path: dist
+          merge-multiple: true
+
+      - name: Sign Release
+        run: |
+          KEYGRIP=$(gpg -K --with-keygrip | grep Keygrip | head -1 | awk '{print $3}')
+          /usr/lib/gnupg2/gpg-preset-passphrase --preset "$KEYGRIP" <<< "${{ secrets.PASSPHRASE }}"
+
+          cd dist
+          rm -f SHASUMS256.txt SHASUMS256.txt.asc
+          sha256sum node-* > SHASUMS256.txt
+          gpg --output SHASUMS256.txt.asc --detach-sig SHASUMS256.txt
+          ls -lFh node-* SHASUMS256.txt*
+
+          for f in node-*; do
+            sha256sum "$f" > "$f".sha256
+          done
+
+      - name: Upload Release
+        run: |
+          gh release upload ${{ env.version }} -R ${{ github.repository }} dist/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
