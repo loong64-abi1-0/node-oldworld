@@ -23,7 +23,7 @@ jobs:
     strategy:
       matrix:
         name: ['node']
-        binaries: ['gnu', 'musl']
+        binaries: ['gnu']
     outputs:
       create: ${{ steps.check_release.outputs.create }}
 
@@ -55,7 +55,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${{ env.version }} || true
-          git push origin ${{ env.version }} --force
+          git push origin ${{ env.version }} --force || true
         working-directory: main
 
       - uses: actions/checkout@v5
