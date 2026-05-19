@@ -84,20 +84,11 @@ jobs:
             # sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
           # fi
           mkdir -p ${{ github.workspace }}/dist
-          case "${{ matrix.binaries }}" in 
-            "gnu")
-              cd ${{ github.workspace }}/dist
-              wget https://unofficial-builds.nodejs.org/download/release/${{ env.version }}/node-${{ env.version }}-headers.tar.gz
-              wget https://unofficial-builds.nodejs.org/download/release/${{ env.version }}/node-${{ env.version }}-headers.tar.xz
-              wget https://unofficial-builds.nodejs.org/download/release/${{ env.version }}/node-${{ env.version }}-linux-loong64.tar.gz
-              wget https://unofficial-builds.nodejs.org/download/release/${{ env.version }}/node-${{ env.version }}-linux-loong64.tar.xz
-              cd -
-              ;;
-            "musl")
-              ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
-              cp -f ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/dist/
-              ;;
-          esac
+          ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
+          cp -f ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/dist/
+          if [ ${{ matrix.binaries }} = "gnu" ]; then
+            cp -f ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* ${{ github.workspace }}/dist/
+          fi
         working-directory: unofficial-builds
 
       - name: Save Cache
