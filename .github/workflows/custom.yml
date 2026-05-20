@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         name: ['node']
-        binaries: ['gnu', 'musl']
+        binaries: ['gnu']
     outputs:
       create: ${{ steps.check_release.outputs.create }}
 
@@ -50,10 +50,19 @@ jobs:
         with:
           path: main
 
-      - uses: actions/checkout@v6
+      - name: Create tag
+        if: env.create == '1'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ env.version }} || true
+          git push origin ${{ env.version }} --force || true
+        working-directory: main
+
+      - uses: actions/checkout@v5
         if: env.create == '1'
         with:
-          repository: loong64/node-unofficial-builds
+          repository: loong64-abi1-0/node-unofficial-builds-oldworld
           path: unofficial-builds
 
       - uses: docker/setup-qemu-action@v4
