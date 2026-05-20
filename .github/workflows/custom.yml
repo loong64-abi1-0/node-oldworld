@@ -150,7 +150,8 @@ jobs:
           cd dist
           rm -f SHASUMS256.txt SHASUMS256.txt.asc
           sha256sum node-* > SHASUMS256.txt
-          gpg --output SHASUMS256.txt.asc --detach-sig SHASUMS256.txt
+          gpg --output SHASUMS256.txt.asc --clearsign SHASUMS256.txt
+          gpg --output SHASUMS256.txt.sig --detach-sig SHASUMS256.txt
           ls -lFh node-* SHASUMS256.txt*
 
           for f in node-*; do
