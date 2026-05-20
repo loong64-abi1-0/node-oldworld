@@ -6,7 +6,7 @@ on:
       version:
         description: 'Node.js version'
         required: true
-        default: 'v25.0.0'
+        default: 'v26.0.0'
       latest_version:
         description: 'Latest'
         type: boolean
@@ -21,6 +21,7 @@ jobs:
       version: ${{ github.event.inputs.version }}
       latest_version: ${{ github.event.inputs.latest_version }}
     strategy:
+      fail-fast: false
       matrix:
         name: ['node']
         binaries: ['gnu']
@@ -44,7 +45,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         if: env.create == '1'
         with:
           path: main
@@ -64,16 +65,16 @@ jobs:
           repository: loong64-abi1-0/node-unofficial-builds-oldworld
           path: unofficial-builds
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         if: env.create == '1'
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: env.create == '1'
 
       - name: Restore Cache
         if: env.create == '1'
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/workdir/.ccache
           key: ${{ matrix.name }}-${{ matrix.binaries }}-v${{ env.major_version }}-
@@ -88,12 +89,11 @@ jobs:
       - name: Build node.js
         if: env.create == '1'
         run: |
-          if [ "${{ env.major_version }}" -ge "24" ]; then
-            sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
-          fi
-
-          ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
+          # if [ "${{ env.major_version }}" -ge "24" ]; then
+            # sed -i 's@stable@mainline@g' recipes/loong64-${{ matrix.binaries }}/Dockerfile
+          # fi
           mkdir -p ${{ github.workspace }}/dist
+          ./bin/local_build.sh -r loong64-${{ matrix.binaries }} -v ${{ env.version }} -w ${{ github.workspace }}/workdir
           cp -f ${{ github.workspace }}/workdir/staging/release/${{ env.version }}/* ${{ github.workspace }}/dist/
           if [ ${{ matrix.binaries }} = "gnu" ]; then
             cp -f ${{ github.workspace }}/workdir/staging/src/${{ env.version }}/* ${{ github.workspace }}/dist/
@@ -103,28 +103,17 @@ jobs:
       - name: Save Cache
         if: always() && env.create == '1'
         id: cache-save
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ github.workspace }}/workdir/.ccache
           key: ${{ matrix.name }}-${{ matrix.binaries }}-v${{ env.major_version }}-${{ github.run_id }}
 
       - name: Upload Artifacts
         if: env.create == '1'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: node-${{ env.version }}-linux-loong64-${{ matrix.binaries }}
           path: ${{ github.workspace }}/dist/*
-
-      - name: Create release
-        if: env.create == '1'
-        run: |
-          latestFlag=""
-          if [ "${{ env.latest_version }}" != "true" ]; then
-            latestFlag="--latest=false"
-          fi
-          gh release create ${{ env.version }} -R ${{ github.repository }} --title ${{ env.version }} --notes "**Full Changelog**: [${{ env.version }}](https://github.com/nodejs/node/releases/tag/${{ env.version }})" ${latestFlag} || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     if: needs.build-custom.outputs.create == '1'
@@ -133,7 +122,7 @@ jobs:
     env:
       version: ${{ github.event.inputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Import GPG key
         id: import_gpg
@@ -156,7 +145,7 @@ jobs:
           gpg-connect-agent reloadagent /bye
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: node-*
           path: dist
@@ -170,7 +159,8 @@ jobs:
           cd dist
           rm -f SHASUMS256.txt SHASUMS256.txt.asc
           sha256sum node-* > SHASUMS256.txt
-          gpg --output SHASUMS256.txt.asc --detach-sig SHASUMS256.txt
+          gpg --output SHASUMS256.txt.asc --clearsign SHASUMS256.txt
+          gpg --output SHASUMS256.txt.sig --detach-sig SHASUMS256.txt
           ls -lFh node-* SHASUMS256.txt*
 
           for f in node-*; do
@@ -179,6 +169,6 @@ jobs:
 
       - name: Upload Release
         run: |
-          gh release upload ${{ env.version }} -R ${{ github.repository }} dist/* --clobber
+          gh release create ${{ env.version }} -R ${{ github.repository }} --generate-notes dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
