@@ -24,7 +24,8 @@ jobs:
       fail-fast: false
       matrix:
         name: ['node']
-        binaries: ['gnu', 'musl']
+        # binaries: ['gnu', 'musl']
+        binaries: ['gnu']
     outputs:
       create: ${{ steps.check_release.outputs.create }}
 
